@@ -49,15 +49,11 @@ To avoid redundant incident creation, signals are debounced based on component i
 
 ### Multi-Sink Data Architecture
 
-The system uses a purpose-driven data storage strategy:
-
 | Storage System | Purpose                                                        |
 | -------------- | -------------------------------------------------------------- |
 | PostgreSQL     | Transactional storage for incidents, lifecycle states, and RCA |
 | MongoDB        | High-volume storage for raw signal payloads                    |
 | Redis          | In-memory cache for real-time dashboard data                   |
-
-This separation ensures optimal performance, scalability, and maintainability.
 
 ---
 
@@ -65,25 +61,29 @@ This separation ensures optimal performance, scalability, and maintainability.
 
 The incident lifecycle is governed using formal design patterns:
 
-* **State Pattern**: Controls valid transitions between incident states:
+* State Pattern:
 
-  ```
-  OPEN → INVESTIGATING → RESOLVED → CLOSED
-  ```
+```
+OPEN → INVESTIGATING → RESOLVED → CLOSED
+```
 
-* **Strategy Pattern**: Determines alert severity and handling logic based on component type or failure classification.
+* Strategy Pattern: Determines alert severity and handling logic based on component type.
 
 ---
 
 ### Mandatory Root Cause Analysis (RCA)
 
-An incident cannot transition to the CLOSED state without a valid RCA. This constraint is enforced at the service layer to ensure completeness and accountability.
+An incident cannot transition to the CLOSED state without a valid RCA. This constraint is enforced at the service layer.
 
 ---
 
 ### Mean Time To Repair (MTTR)
 
-MTTR is automatically calculated as the difference between the initial signal timestamp and the RCA submission time. This metric is stored in PostgreSQL and can be queried for performance analysis.
+MTTR is automatically calculated as:
+
+```
+MTTR = end_time - start_time
+```
 
 ---
 
@@ -104,19 +104,9 @@ REDIS_URI=redis://redis:6379
 
 ### Running the System
 
-Start all services using Docker:
-
 ```
 docker-compose up --build
 ```
-
-This command initializes:
-
-* Backend service (Node.js)
-* Frontend application (React)
-* PostgreSQL database
-* MongoDB instance
-* Redis server
 
 ---
 
@@ -127,10 +117,6 @@ This command initializes:
 ```
 POST /signal
 ```
-
-Accepts incoming system signals and enqueues them for asynchronous processing.
-
----
 
 ### Incident Management
 
@@ -143,52 +129,79 @@ POST   /incident/:id/rca
 
 ---
 
+## Synthetic Telemetry Generation (Testing the System)
+
+The following command can be used to simulate real-world signal ingestion and validate system behavior:
+
+```
+curl -X POST http://localhost:5000/api/signals \
+-H "Content-Type: application/json" \
+-d '{
+  "source": "network-gateway-04",
+  "title": "Unusual Data Exfiltration",
+  "description": "Outbound traffic spike detected on port 443 to an unknown external IP.",
+  "severity": "CRITICAL"
+}'
+```
+
+### What This Validates
+
+#### 1. Signal Ingestion and Orchestration
+
+* Sends a real telemetry signal to the backend system
+* Triggers asynchronous processing via the Redis queue
+* Stores raw signal data in MongoDB (audit log)
+* Creates or updates an incident in PostgreSQL
+
+---
+
+#### 2. Incident Creation and Classification
+
+* Validates severity mapping (e.g., CRITICAL classification)
+* Ensures correct incident creation through debouncing logic
+* Confirms linkage between signals and incidents
+
+---
+
+#### 3. Workflow Initialization and MTTR Tracking
+
+* Establishes the initial timestamp (`start_time`)
+* Enables full lifecycle testing from OPEN to CLOSED
+* Forms the basis for MTTR calculation
+
+---
+
+#### 4. Stress and Performance Testing
+
+* This command can be executed repeatedly or in parallel
+* Allows validation of:
+
+  * Queue throughput
+  * Worker scalability
+  * System stability under high load conditions
+
+---
+
 ## Observability
 
-### Health Check Endpoint
+### Health Endpoint
 
 ```
 GET /health
 ```
 
-Provides system health status, including database connectivity and service readiness.
-
----
-
 ### Metrics
-
-The system logs operational metrics such as:
 
 * Signals processed per second
 * Worker throughput
 
 ---
 
-## Testing and Simulation
-
-To simulate high-volume signal ingestion:
-
-```
-node simulate.js
-```
-
-Expected results:
-
-* Multiple signals for the same component result in a single incident
-* Signals are stored in MongoDB
-* Incident data is stored in PostgreSQL
-
----
-
 ## Verifying MTTR and RCA
-
-Access the PostgreSQL container:
 
 ```
 docker exec -it ims-postgres psql -U user -d ims_db
 ```
-
-Execute:
 
 ```
 SELECT id, status, start_time, end_time, mttr
@@ -201,34 +214,32 @@ WHERE status = 'CLOSED';
 ## Technology Stack
 
 * Backend: Node.js, Express
-* Queue System: BullMQ (Redis)
+* Queue: BullMQ (Redis)
 * Databases: PostgreSQL, MongoDB
-* Cache Layer: Redis
-* Frontend: React, Tailwind CSS
+* Cache: Redis
+* Frontend: React, Tailwind
 * Containerization: Docker
 
 ---
 
 ## Performance Characteristics
 
-* Supports ingestion rates exceeding 10,000 signals per second through asynchronous buffering
-* Ensures low-latency dashboard updates via Redis caching
-* Maintains system stability under load using queue-based backpressure mechanisms
+* Handles high-throughput ingestion using async queue architecture
+* Ensures low-latency responses via Redis caching
+* Maintains system stability using backpressure mechanisms
 
 ---
 
 ## Assignment Requirement Coverage
 
-The implementation addresses the following requirements:
-
-* Asynchronous signal processing
-* Debouncing of high-frequency signals
-* Separation of storage systems based on data type
-* Workflow management using State Pattern
-* Alerting logic using Strategy Pattern
-* Mandatory Root Cause Analysis enforcement
-* Automatic MTTR computation
-* Rate limiting and observability mechanisms
+* Asynchronous processing
+* Debouncing logic
+* Multi-database architecture
+* Workflow engine (State Pattern)
+* Alert strategy
+* Mandatory RCA enforcement
+* MTTR calculation
+* Observability and rate limiting
 
 ---
 
@@ -241,9 +252,9 @@ Computer Science and Engineering
 
 ## Future Improvements
 
-* Integration with distributed streaming platforms for higher scalability
-* Real-time updates using WebSocket or event streaming
-* Advanced anomaly detection using machine learning models
-* Horizontal scaling of worker processes
+* Distributed streaming integration (Kafka)
+* Real-time updates via WebSockets
+* Horizontal worker scaling
+* Advanced anomaly detection
 
 ---
